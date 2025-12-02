@@ -51,7 +51,7 @@ class RecurrentCache(Cache):
             layer_idx (`int`):
                 The index of the layer to cache the states for.
             cache_kwargs (`Dict[str, Any]`, `optional`):
-                Additional arguments for the cache subclass.
+                Additional arguments for the cache subclass. Can also be an int for backward compatibility.
 
         Return:
             The updated state.
@@ -62,8 +62,18 @@ class RecurrentCache(Cache):
         if len(self.states) <= layer_idx:
             self.states.append(state)
         else:
+            # Since tuple is immutable, we need to replace the entire tuple
+            # Also handle in-place update for tensors to save memory
+            updated_state = []
             for i, s in enumerate(state):
-                self.states[layer_idx][i].copy_(s)
+                if i < len(self.states[layer_idx]) and self.states[layer_idx][i] is not None:
+                    # In-place copy for existing tensors
+                    self.states[layer_idx][i].copy_(s)
+                    updated_state.append(self.states[layer_idx][i])
+                else:
+                    # New tensor
+                    updated_state.append(s)
+            self.states[layer_idx] = tuple(updated_state)
             # update the number of seen tokens once we achieve the last layer
             if layer_idx == len(self) - 1:
                 self._seen_tokens += 1
